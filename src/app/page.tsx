@@ -330,6 +330,8 @@ const TicketVerification: React.FC = () => {
         result.result.status === "confirmed" &&
         result.result.payment_status === "completed";
 
+      const isUsed = result.result.status === "used";
+
       if (isValid) {
         playSound(true);
       } else {
@@ -364,6 +366,21 @@ const TicketVerification: React.FC = () => {
     const isValid =
       scanResult.status === "confirmed" &&
       scanResult.payment_status === "completed";
+
+    const isUsed = scanResult.status === "used";
+
+    if (isUsed) {
+      return {
+        isValid: false,
+        icon: XCircle,
+        color: "text-red-500",
+        bgColor: "bg-red-50",
+        borderColor: "border-red-200",
+        message: "Ticket Already Used",
+        customMessage: `Ticket code ${scanResult.ticket_code} has been used`,
+      };
+    }
+
     return {
       isValid,
       icon: isValid ? CheckCircle : XCircle,
@@ -402,7 +419,9 @@ const TicketVerification: React.FC = () => {
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <p className="text-white font-medium">Welcome, {user?.name}</p>
-                <p className="text-gray-400 text-sm capitalize">{user?.role || 'Staff'}</p>
+                <p className="text-gray-400 text-sm capitalize">
+                  {user?.role || "Staff"}
+                </p>
               </div>
               <button
                 onClick={handleLogout}
@@ -629,9 +648,15 @@ const TicketVerification: React.FC = () => {
                       <h3 className={`text-lg font-semibold ${status.color}`}>
                         {status.message}
                       </h3>
-                      <p className="text-black text-sm">
-                        Verified at {formatDate(scanResult.verified_at)}
-                      </p>
+                      {status.customMessage ? (
+                        <p className="text-red-600 font-medium text-sm">
+                          {status.customMessage}
+                        </p>
+                      ) : (
+                        <p className="text-black text-sm">
+                          Verified at {formatDate(scanResult.verified_at)}
+                        </p>
+                      )}
                     </div>
                   </div>
 
