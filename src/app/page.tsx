@@ -13,6 +13,7 @@ import {
   Clock,
   Ticket,
   LogOut,
+  X,
 } from "lucide-react";
 import { verifyTicketCode } from "./admin.api";
 import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode";
@@ -26,6 +27,41 @@ interface VerificationResult {
   payment_status: string;
   booking_time: string;
   verified_at: string;
+  user?: {
+    _id: string;
+    name: string;
+    email: string;
+    avatar: string;
+    phone: string;
+  };
+  movie?: {
+    _id: string;
+    title: string;
+    poster_url: string;
+    duration: number;
+    language: string;
+  };
+  theater?: {
+    _id: string;
+    name: string;
+    location: string;
+  };
+  screen?: {
+    _id: string;
+    name: string;
+    screen_type: string;
+  };
+  showtime?: {
+    _id: string;
+    start_time: string;
+    end_time: string;
+  };
+  seats?: Array<{
+    row: string;
+    number: number;
+    type: string;
+    price: number;
+  }>;
 }
 
 const TicketVerification: React.FC = () => {
@@ -143,55 +179,67 @@ const TicketVerification: React.FC = () => {
       if (!scanner) return;
 
       const config = {
-        fps: 15, // Tăng FPS để detect tốt hơn
+        fps: 10, // Reduced FPS for better mobile performance
         qrbox: function (viewfinderWidth: number, viewfinderHeight: number) {
-          // Dynamic qrbox size - 70% of smaller dimension
+          // Smaller qrbox for mobile devices
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const qrboxSize = Math.floor(minEdge * 0.7);
+          const qrboxSize = Math.floor(minEdge * 0.6); // Reduced from 0.7 to 0.6
           return {
             width: qrboxSize,
             height: qrboxSize,
           };
         },
-        aspectRatio: 1.0, // Vuông để tốt hơn cho QR
+        aspectRatio: 1.0,
         rememberLastUsedCamera: true,
-        // Tối ưu constraints cho QR scanning
+        // Optimized constraints for mobile devices
         videoConstraints: {
-          width: { min: 640, ideal: 1280, max: 1920 },
-          height: { min: 480, ideal: 720, max: 1080 },
-          facingMode: "environment", // Ưu tiên camera sau
+          width: { min: 320, ideal: 640, max: 1280 }, // Lower resolution for mobile
+          height: { min: 240, ideal: 480, max: 720 },
+          facingMode: "environment",
+        },
+        // Add mobile-specific optimizations
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
         },
       };
 
-      // Try environment camera first, fallback to user camera
+      // Enhanced camera selection for mobile
       try {
+        // First try to get available cameras
+        const cameras = await Html5Qrcode.getCameras();
+        console.log("Available cameras:", cameras);
+
+        // Find rear camera for mobile
+        const rearCamera = cameras.find(
+          (camera) =>
+            camera.label.toLowerCase().includes("back") ||
+            camera.label.toLowerCase().includes("rear") ||
+            camera.label.toLowerCase().includes("environment")
+        );
+
+        const cameraId = rearCamera
+          ? rearCamera.id
+          : { facingMode: "environment" };
+
         await scanner.start(
-          { facingMode: "environment" },
+          cameraId,
           config,
           (decodedText: string) => {
             if (decodedText && decodedText !== lastScannedCode) {
               console.log("QR Code detected:", decodedText);
               setLastScannedCode(decodedText);
-
-              // Verify ticket
               handleVerifyTicket(decodedText);
-
-              // Pause scanning temporarily
               setTimeout(() => {
                 setLastScannedCode("");
               }, 3000);
             }
           },
           () => {
-            // Completely suppress all scanning errors to avoid console spam
-            // These errors are normal when no QR code is in view
+            // Suppress scanning errors
           }
         );
       } catch (err: any) {
-        console.log(
-          "Environment camera not available, trying user camera...",
-          err
-        );
+        console.log("Rear camera not available, trying front camera...", err);
 
         try {
           await scanner.start(
@@ -201,67 +249,29 @@ const TicketVerification: React.FC = () => {
               if (decodedText && decodedText !== lastScannedCode) {
                 console.log("QR Code detected:", decodedText);
                 setLastScannedCode(decodedText);
-
-                // Verify ticket
                 handleVerifyTicket(decodedText);
-
-                // Pause scanning temporarily
                 setTimeout(() => {
                   setLastScannedCode("");
                 }, 3000);
               }
             },
             () => {
-              // Completely suppress all scanning errors to avoid console spam
-              // These errors are normal when no QR code is in view
+              // Suppress scanning errors
             }
           );
         } catch (userCamErr: any) {
-          console.log("User camera also not available", userCamErr);
+          console.log("Front camera also not available", userCamErr);
           throw new Error("No camera available");
         }
       }
 
-      // Add a small delay to ensure video element is created
-      setTimeout(() => {
-        const videoElement = element.querySelector("video");
-        if (videoElement) {
-          console.log("✅ Video element found and should be visible");
-          console.log(
-            "Video dimensions:",
-            videoElement.videoWidth,
-            "x",
-            videoElement.videoHeight
-          );
-          console.log("Video playing:", !videoElement.paused);
-
-          // Force video to be visible
-          videoElement.style.display = "block";
-          videoElement.style.width = "100%";
-          videoElement.style.height = "100%";
-          videoElement.style.objectFit = "cover";
-
-          // Add event listeners for debugging
-          videoElement.addEventListener("loadedmetadata", () => {
-            console.log("📹 Video metadata loaded:", {
-              width: videoElement.videoWidth,
-              height: videoElement.videoHeight,
-              duration: videoElement.duration,
-            });
-          });
-        } else {
-          console.warn("❌ Video element not found after scanner start");
-          setError("Video element not created. Try refreshing the page.");
-        }
-      }, 500);
-
-      setCameraStatus("active");
       setIsScanning(true);
-      console.log("QR Scanner started successfully");
-    } catch (err) {
-      console.error("Error accessing camera:", err);
+      setCameraStatus("active");
+    } catch (err: any) {
+      console.error("Error starting camera:", err);
+      setError(`Camera error: ${err.message}`);
       setCameraStatus("error");
-      setError("Could not access camera: " + (err as Error).message);
+      setIsScanning(false);
     }
   };
 
@@ -323,7 +333,6 @@ const TicketVerification: React.FC = () => {
     try {
       const result = await verifyTicketCode(ticketCode.trim());
       setScanResult(result.result);
-      console.log("Ticket verification result:", result);
 
       // Check if ticket is valid (confirmed status and completed payment)
       const isValid =
@@ -331,29 +340,23 @@ const TicketVerification: React.FC = () => {
         result.result.payment_status === "completed";
 
       const isUsed = result.result.status === "used";
+      const isPending = result.result.payment_status === "pending";
+      const isCancelled = result.result.payment_status === "cancelled";
 
+      // Play appropriate sound based on status
       if (isValid) {
-        playSound(true);
-      } else {
+        playSound(true); // Success sound
+      } else if (isPending || isCancelled) {
+        // For pending/cancelled, we might want a different sound or no sound
+        // For now, using false (error sound) but could be customized
         playSound(false);
+      } else {
+        playSound(false); // Error sound for invalid/used tickets
       }
-
-      // Auto-clear result after 10 seconds
-      setTimeout(() => {
-        setScanResult(null);
-        setError(null);
-        setLastScannedCode(""); // Allow rescanning the same code
-      }, 10000);
     } catch (err: any) {
       const errorMessage = err.message || "Failed to verify ticket";
       setError(errorMessage);
       playSound(false);
-
-      // Auto-clear error after 5 seconds
-      setTimeout(() => {
-        setError(null);
-        setLastScannedCode(""); // Allow rescanning the same code
-      }, 5000);
     } finally {
       setIsVerifying(false);
     }
@@ -368,7 +371,10 @@ const TicketVerification: React.FC = () => {
       scanResult.payment_status === "completed";
 
     const isUsed = scanResult.status === "used";
+    const isPending = scanResult.payment_status === "pending";
+    const isCancelled = scanResult.payment_status === "cancelled";
 
+    // Ticket already used
     if (isUsed) {
       return {
         isValid: false,
@@ -381,6 +387,33 @@ const TicketVerification: React.FC = () => {
       };
     }
 
+    // Payment pending
+    if (isPending) {
+      return {
+        isValid: false,
+        icon: AlertTriangle,
+        color: "text-yellow-500",
+        bgColor: "bg-yellow-50",
+        borderColor: "border-yellow-200",
+        message: "Payment Pending",
+        customMessage: `Payment for ticket ${scanResult.ticket_code} is still pending`,
+      };
+    }
+
+    // Payment cancelled
+    if (isCancelled) {
+      return {
+        isValid: false,
+        icon: XCircle,
+        color: "text-orange-500",
+        bgColor: "bg-orange-50",
+        borderColor: "border-orange-200",
+        message: "Payment Cancelled",
+        customMessage: `Payment for ticket ${scanResult.ticket_code} has been cancelled`,
+      };
+    }
+
+    // Valid or invalid ticket
     return {
       isValid,
       icon: isValid ? CheckCircle : XCircle,
@@ -622,14 +655,27 @@ const TicketVerification: React.FC = () => {
                   exit={{ opacity: 0, y: -20 }}
                   className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6"
                 >
-                  <div className="flex items-center gap-3">
-                    <AlertTriangle className="h-6 w-6 text-red-500" />
-                    <div>
-                      <h3 className="font-medium text-red-800">
-                        Verification Failed
-                      </h3>
-                      <p className="text-red-600 text-sm">{error}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <AlertTriangle className="h-6 w-6 text-red-500" />
+                      <div>
+                        <h3 className="font-medium text-red-800">
+                          Verification Failed
+                        </h3>
+                        <p className="text-red-600 text-sm">{error}</p>
+                      </div>
                     </div>
+                    {/* Close button */}
+                    <button
+                      onClick={() => {
+                        setError(null);
+                        setLastScannedCode(""); // Allow rescanning the same code
+                      }}
+                      className="p-2 hover:bg-red-100 rounded-full transition-colors"
+                      title="Close error"
+                    >
+                      <X className="h-5 w-5 text-red-500" />
+                    </button>
                   </div>
                 </motion.div>
               )}
@@ -642,20 +688,143 @@ const TicketVerification: React.FC = () => {
                   className={`${status.bgColor} ${status.borderColor} border rounded-lg p-6`}
                 >
                   {/* Status Header */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <status.icon className={`h-8 w-8 ${status.color}`} />
-                    <div>
-                      <h3 className={`text-lg font-semibold ${status.color}`}>
-                        {status.message}
-                      </h3>
-                      {status.customMessage ? (
-                        <p className="text-red-600 font-medium text-sm">
-                          {status.customMessage}
-                        </p>
-                      ) : (
-                        <p className="text-black text-sm">
-                          Verified at {formatDate(scanResult.verified_at)}
-                        </p>
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <status.icon className={`h-8 w-8 ${status.color}`} />
+                      <div>
+                        <h3 className={`text-lg font-semibold ${status.color}`}>
+                          {status.message}
+                        </h3>
+                        {status.customMessage ? (
+                          <p className="text-red-600 font-medium text-sm">
+                            {status.customMessage}
+                          </p>
+                        ) : (
+                          <p className="text-black text-sm">
+                            Verified at {formatDate(scanResult.verified_at)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {/* Close button */}
+                    <button
+                      onClick={() => {
+                        setScanResult(null);
+                        setError(null);
+                        setLastScannedCode(""); // Allow rescanning the same code
+                      }}
+                      className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                      title="Close result"
+                    >
+                      <X className="h-5 w-5 text-gray-500" />
+                    </button>
+                  </div>
+
+                  {/* Customer Information */}
+                  {scanResult.user && (
+                    <div className="mb-6 p-4 bg-white rounded-lg border">
+                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <User className="h-5 w-5" />
+                        Customer Information
+                      </h4>
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={scanResult.user.avatar || "/default-avatar.png"}
+                          alt={scanResult.user.name}
+                          className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                        />
+                        <div>
+                          <p className="font-medium text-gray-800">
+                            {scanResult.user.name}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {scanResult.user.email}
+                          </p>
+                          {scanResult.user.phone && (
+                            <p className="text-sm text-gray-600">
+                              {scanResult.user.phone}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Movie & Theater Information */}
+                  <div className="mb-6 p-4 bg-white rounded-lg border">
+                    <h4 className="font-semibold text-gray-800 mb-3">
+                      Booking Details
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Movie Info */}
+                      {scanResult.movie && (
+                        <div className="flex gap-3">
+                          <img
+                            src={scanResult.movie.poster_url}
+                            alt={scanResult.movie.title}
+                            className="w-16 h-20 object-cover rounded"
+                          />
+                          <div>
+                            <p className="font-medium text-gray-800">
+                              {scanResult.movie.title}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {scanResult.movie.duration} mins
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {scanResult.movie.language}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Theater & Screen Info */}
+                      <div>
+                        {scanResult.theater && (
+                          <div className="mb-2">
+                            <p className="font-medium text-gray-800">
+                              {scanResult.theater.name}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {scanResult.theater.location}
+                            </p>
+                          </div>
+                        )}
+                        {scanResult.screen && (
+                          <div>
+                            <p className="text-sm text-gray-600">
+                              {scanResult.screen.name} (
+                              {scanResult.screen.screen_type.toUpperCase()})
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Showtime & Seats */}
+                  <div className="mb-6 p-4 bg-white rounded-lg border">
+                    <h4 className="font-semibold text-gray-800 mb-3">
+                      Session Details
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {scanResult.showtime && (
+                        <div>
+                          <p className="text-sm text-gray-600">Showtime</p>
+                          <p className="font-medium text-gray-800">
+                            {formatDate(scanResult.showtime.start_time)}
+                          </p>
+                        </div>
+                      )}
+                      {scanResult.seats && scanResult.seats.length > 0 && (
+                        <div>
+                          <p className="text-sm text-gray-600">Seats</p>
+                          <p className="font-medium text-gray-800">
+                            {scanResult.seats
+                              .map((seat) => `${seat.row}${seat.number}`)
+                              .join(", ")}
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -665,7 +834,7 @@ const TicketVerification: React.FC = () => {
                     <div className="flex items-center gap-3">
                       <Ticket className="h-5 w-5 text-gray-500" />
                       <div>
-                        <p className="text-sm text-black">Ticket Code</p>
+                        <p className="text-sm text-gray-600">Ticket Code</p>
                         <p className="font-mono text-black font-medium">
                           {scanResult.ticket_code}
                         </p>
@@ -753,7 +922,11 @@ const TicketVerification: React.FC = () => {
                   manually
                 </li>
                 <li>• Green result = Valid ticket, allow entry</li>
-                <li>• Red result = Invalid ticket, deny entry</li>
+                <li>
+                  • Red result = Invalid ticket or used ticket, deny entry
+                </li>
+                <li>• Yellow result = Payment pending, deny entry</li>
+                <li>• Orange result = Payment cancelled, deny entry</li>
                 <li className="text-orange-600 font-medium">
                   QR Scanning Tips:
                 </li>

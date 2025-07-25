@@ -698,9 +698,43 @@ export const verifyTicketCode = async (
     ticket_code: string;
     status: string;
     payment_status: string;
-
     booking_time: string;
     verified_at: string;
+    user?: {
+      _id: string;
+      name: string;
+      email: string;
+      avatar: string;
+      phone: string;
+    };
+    movie?: {
+      _id: string;
+      title: string;
+      poster_url: string;
+      duration: number;
+      language: string;
+    };
+    theater?: {
+      _id: string;
+      name: string;
+      location: string;
+    };
+    screen?: {
+      _id: string;
+      name: string;
+      screen_type: string;
+    };
+    showtime?: {
+      _id: string;
+      start_time: string;
+      end_time: string;
+    };
+    seats?: Array<{
+      row: string;
+      number: number;
+      type: string;
+      price: number;
+    }>;
   };
 }> => {
   try {
