@@ -78,6 +78,7 @@ const TicketVerification: React.FC = () => {
     "idle" | "starting" | "active" | "error"
   >("idle");
   const [lastScannedCode, setLastScannedCode] = useState<string>("");
+  const [scanCooldown, setScanCooldown] = useState<number>(0);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -229,9 +230,19 @@ const TicketVerification: React.FC = () => {
               console.log("QR Code detected:", decodedText);
               setLastScannedCode(decodedText);
               handleVerifyTicket(decodedText);
-              setTimeout(() => {
-                setLastScannedCode("");
-              }, 3000);
+
+              // Start cooldown timer
+              setScanCooldown(20);
+              const cooldownInterval = setInterval(() => {
+                setScanCooldown((prev) => {
+                  if (prev <= 1) {
+                    clearInterval(cooldownInterval);
+                    setLastScannedCode("");
+                    return 0;
+                  }
+                  return prev - 1;
+                });
+              }, 1000);
             }
           },
           () => {
@@ -250,9 +261,19 @@ const TicketVerification: React.FC = () => {
                 console.log("QR Code detected:", decodedText);
                 setLastScannedCode(decodedText);
                 handleVerifyTicket(decodedText);
-                setTimeout(() => {
-                  setLastScannedCode("");
-                }, 3000);
+
+                // Start cooldown timer
+                setScanCooldown(20);
+                const cooldownInterval = setInterval(() => {
+                  setScanCooldown((prev) => {
+                    if (prev <= 1) {
+                      clearInterval(cooldownInterval);
+                      setLastScannedCode("");
+                      return 0;
+                    }
+                    return prev - 1;
+                  });
+                }, 1000);
               }
             },
             () => {
@@ -322,8 +343,8 @@ const TicketVerification: React.FC = () => {
 
   // Verify ticket code
   const handleVerifyTicket = async (ticketCode: string) => {
-    if (!ticketCode.trim()) {
-      return;
+    if (!ticketCode.trim() || isVerifying) {
+      return; // Prevent multiple calls if already verifying
     }
 
     setIsVerifying(true);
@@ -353,6 +374,9 @@ const TicketVerification: React.FC = () => {
       } else {
         playSound(false); // Error sound for invalid/used tickets
       }
+
+      // Clear manual input after successful verification
+      setManualInput("");
     } catch (err: any) {
       const errorMessage = err.message || "Failed to verify ticket";
       setError(errorMessage);
@@ -562,6 +586,11 @@ const TicketVerification: React.FC = () => {
                     ? lastScannedCode.substring(0, 15) + "..."
                     : "None"}
                 </div>
+                {scanCooldown > 0 && (
+                  <div className="text-yellow-400">
+                    Scan cooldown: {scanCooldown}s remaining
+                  </div>
+                )}
               </div>
             </div>
             {/* Camera Controls */}
@@ -592,6 +621,7 @@ const TicketVerification: React.FC = () => {
                     setScanResult(null);
                     setError(null);
                     setLastScannedCode("");
+                    setScanCooldown(0); // Reset cooldown
                   }}
                   className="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm"
                 >
@@ -612,8 +642,9 @@ const TicketVerification: React.FC = () => {
                   onChange={(e) => setManualInput(e.target.value)}
                   placeholder="Enter ticket code manually"
                   className="flex-1 px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") {
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !isVerifying) {
+                      e.preventDefault();
                       handleVerifyTicket(manualInput);
                     }
                   }}
@@ -670,6 +701,7 @@ const TicketVerification: React.FC = () => {
                       onClick={() => {
                         setError(null);
                         setLastScannedCode(""); // Allow rescanning the same code
+                        setScanCooldown(0); // Reset cooldown
                       }}
                       className="p-2 hover:bg-red-100 rounded-full transition-colors"
                       title="Close error"
@@ -712,6 +744,7 @@ const TicketVerification: React.FC = () => {
                         setScanResult(null);
                         setError(null);
                         setLastScannedCode(""); // Allow rescanning the same code
+                        setScanCooldown(0); // Reset cooldown
                       }}
                       className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                       title="Close result"
